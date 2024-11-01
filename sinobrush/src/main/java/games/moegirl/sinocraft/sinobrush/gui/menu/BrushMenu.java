@@ -1,19 +1,18 @@
 package games.moegirl.sinocraft.sinobrush.gui.menu;
 
 import games.moegirl.sinocraft.sinobrush.gui.SBRMenu;
-import games.moegirl.sinocraft.sinobrush.gui.screen.BrushScreen;
 import games.moegirl.sinocraft.sinobrush.item.SBRItems;
-import games.moegirl.sinocraft.sinobrush.item.XuanPaperItem;
 import games.moegirl.sinocraft.sinocore.gui.WidgetMenuBase;
 import games.moegirl.sinocraft.sinocore.gui.widgets.SlotStrategy;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
 
 public class BrushMenu extends WidgetMenuBase {
 
@@ -23,15 +22,22 @@ public class BrushMenu extends WidgetMenuBase {
 
     public final SimpleContainer container = new SimpleContainer(3);
 
-    public BrushMenu(int id, Inventory inventory, FriendlyByteBuf buf) {
-        super(SBRMenu.BRUSH_PAPER.get(), id, new ResourceLocation("sinobrush", "textures/gui/brush"));
+    public final int brushSlotId;
+
+    public BrushMenu(int id, Inventory inventory, int slotId) {
+        super(SBRMenu.BRUSH_PAPER.get(), id, ResourceLocation.fromNamespaceAndPath("sinobrush", "textures/gui/brush"));
 
         // qyl27: notice! index of quick slot in player inventory is 0 ~ 8, so it should 0 ~ 8 in container also.
-        addSlots(inventory, "slot_items", 0, SlotStrategy.simple());
+        brushSlotId = slotId;
+        addSlotsWithSlotBlocked(inventory, "slot_items", 0, SlotStrategy.simple(), List.of(brushSlotId));
         addSlots(inventory, "slots_inventory", 9, SlotStrategy.simple());
         addSlot(container, "slot_ink", INK_SLOT, SlotStrategy.insertFilter(SBRItems.INK_BOTTLE));
         addSlot(container, "slot_paper", PAPER_SLOT, SlotStrategy.insertFilter(SBRItems.XUAN_PAPER));
         addSlot(container, "slot_drawing", DRAW_SLOT, SlotStrategy.onlyTake());
+    }
+
+    public BrushMenu(int id, Inventory inventory, FriendlyByteBuf buf) {
+        this(id, inventory, buf.readVarInt());
     }
 
     public boolean isDrawable() {
@@ -76,11 +82,11 @@ public class BrushMenu extends WidgetMenuBase {
             return true;
         }
 
-        if (ItemStack.isSameItemSameTags(exist, stack)) {
+        if (ItemStack.isSameItemSameComponents(exist, stack)) {
             var sum = exist.getCount() + stack.getCount();
 
-            if (sum > exist.getItem().getMaxStackSize()) {
-                var moved = sum - exist.getItem().getMaxStackSize();
+            if (sum > exist.getItem().getDefaultMaxStackSize()) {
+                var moved = sum - exist.getItem().getDefaultMaxStackSize();
                 exist.grow(moved);
                 stack.shrink(moved);
             } else {
@@ -96,20 +102,15 @@ public class BrushMenu extends WidgetMenuBase {
 
     @Override
     public boolean stillValid(Player player) {
-        return player.isAlive();
+        return player.isAlive() && player.getInventory().getItem(brushSlotId).is(SBRItems.BRUSH.get());
     }
 
     @Override
     public void removed(Player player) {
         super.removed(player);
 
-        if (player instanceof ServerPlayer sp && sp.isAlive() && !sp.hasDisconnected()) {
-            var inv = player.getInventory();
-            inv.placeItemBackInInventory(container.getItem(INK_SLOT));
-            inv.placeItemBackInInventory(container.getItem(PAPER_SLOT));
-            inv.placeItemBackInInventory(container.getItem(DRAW_SLOT));
+        if (!player.level().isClientSide()) {
+            this.clearContainer(player, container);
         }
-
-        // Todo: qyl27: save canvas into item nbt to prevent content lost.
     }
 }

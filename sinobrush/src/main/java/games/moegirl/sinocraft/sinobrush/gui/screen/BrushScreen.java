@@ -6,24 +6,22 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.serialization.JsonOps;
 import games.moegirl.sinocraft.sinobrush.SBRConstants;
 import games.moegirl.sinocraft.sinobrush.SinoBrush;
-import games.moegirl.sinocraft.sinobrush.drawing.Drawing;
+import games.moegirl.sinocraft.sinobrush.drawing.MutableDrawing;
 import games.moegirl.sinocraft.sinobrush.gui.menu.BrushMenu;
 import games.moegirl.sinocraft.sinobrush.gui.widget.CanvasWidget;
-import games.moegirl.sinocraft.sinobrush.item.SBRItems;
 import games.moegirl.sinocraft.sinobrush.item.XuanPaperItem;
-import games.moegirl.sinocraft.sinobrush.network.C2SDrawingPacket;
-import games.moegirl.sinocraft.sinobrush.network.S2CDrawingPacket;
-import games.moegirl.sinocraft.sinobrush.network.SBRNetworks;
+import games.moegirl.sinocraft.sinobrush.network.C2SSaveDrawPacket;
+import games.moegirl.sinocraft.sinobrush.network.S2CDrawResultPacket;
 import games.moegirl.sinocraft.sinobrush.utility.CanvasStashHelper;
 import games.moegirl.sinocraft.sinobrush.utility.ColorHelper;
 import games.moegirl.sinocraft.sinocore.gui.WidgetScreenBase;
 import games.moegirl.sinocraft.sinocore.gui.widgets.component.EditBoxWidget;
 import games.moegirl.sinocraft.sinocore.gui.widgets.component.ImageButtonWidget;
 import games.moegirl.sinocraft.sinocore.gui.widgets.entry.RectEntry;
+import games.moegirl.sinocraft.sinocore.network.NetworkManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.ImageButton;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
@@ -39,13 +37,13 @@ import java.time.Instant;
 
 public class BrushScreen extends WidgetScreenBase<BrushMenu> {
 
-    private ImageButton btnBrush;
+    private Button btnBrush;
     private final ImageButtonWidget[] colorButtons = new ImageButtonWidget[16];
 
     private EditBoxWidget title;
     private CanvasWidget canvas;
 
-    private boolean isInited = false;
+    private boolean hasInitialized = false;
     private boolean isSaving = false;
     private int selectedColor = 0;
 
@@ -81,7 +79,7 @@ public class BrushScreen extends WidgetScreenBase<BrushMenu> {
         title = addEditBox("file_name");
 
         var rect = (RectEntry) widgets.getWidget("canvas");
-        canvas = new CanvasWidget(this, rect.getX() + leftPos, rect.getY() + topPos, rect.getWidth(), rect.getHeight(), this::isCanvasDrawable);
+        canvas = new CanvasWidget(this, rect.getX() + leftPos, rect.getY() + topPos, rect.getWidth(), rect.getHeight());
 
         addRenderableWidget(canvas);
         selectColor(15);
@@ -89,26 +87,29 @@ public class BrushScreen extends WidgetScreenBase<BrushMenu> {
         menu.container.addListener(container -> {
             var ink = menu.container.getItem(BrushMenu.INK_SLOT);
             var paper = menu.container.getItem(BrushMenu.PAPER_SLOT);
-            updateState(SBRItems.XUAN_PAPER.get().getColor(paper),
-                    SBRItems.INK_BOTTLE.get().getColor(ink),
-                    XuanPaperItem.getExpend(paper));
+            canvas.getDrawing().setInkColor(ColorHelper.getColor(ink));
+            canvas.getDrawing().setPaperColor(ColorHelper.getColor(paper));
+            var size = SBRConstants.DRAWING_MIN_LENGTH << XuanPaperItem.getExpend(paper);
+            canvas.getDrawing().resize(size, size);
+            updateCanvas();
         });
 
-        if (!isInited) {
+        if (!hasInitialized) {
             var drawing = CanvasStashHelper.unstashCanvas(Minecraft.getInstance());
             if (drawing != null) {
                 canvas.getDrawing().setWidth(drawing.getWidth());
                 canvas.getDrawing().setHeight(drawing.getHeight());
                 canvas.getDrawing().setPixels(drawing.getPixels());
+                updateCanvas();
             }
         }
 
-        isInited = true;
+        hasInitialized = true;
     }
 
     @Override
     public void onClose() {
-        var drawing = new Drawing();
+        var drawing = new MutableDrawing();
         drawing.setWidth(canvas.getDrawing().getWidth());
         drawing.setHeight(canvas.getDrawing().getHeight());
         drawing.setPixels(canvas.getDrawing().getPixels());
@@ -116,15 +117,12 @@ public class BrushScreen extends WidgetScreenBase<BrushMenu> {
         super.onClose();
     }
 
-    public int getSelectedColor() {
-        return selectedColor;
+    private void updateCanvas() {
+        canvas.active = isCanvasDrawable();
     }
 
-    public void updateState(int paperColor, int inkColor, int paperExpend) {
-        canvas.getDrawing().setPaperColor(paperColor);
-        canvas.getDrawing().setInkColor(inkColor);
-        var size = SBRConstants.DRAWING_MIN_LENGTH << paperExpend;
-        canvas.getDrawing().resize(size, size);
+    public int getSelectedColor() {
+        return selectedColor;
     }
 
     private boolean isCanvasDrawable() {
@@ -138,8 +136,8 @@ public class BrushScreen extends WidgetScreenBase<BrushMenu> {
     private void saveCanvas(Button button) {
         var drawing = canvas.getDrawing();
         drawing.setTitle(title.getValue());
-        C2SDrawingPacket packet = new C2SDrawingPacket(drawing);
-        SBRNetworks.NETWORKS.sendToServer(packet);
+        C2SSaveDrawPacket packet = new C2SSaveDrawPacket(drawing, menu.brushSlotId);
+        NetworkManager.sendToServer(packet);
         beginSaving();
     }
 
@@ -227,23 +225,27 @@ public class BrushScreen extends WidgetScreenBase<BrushMenu> {
         selectedColor = color;
     }
 
-    public void handleServiceData(int status) {
+    public void handleServiceData(S2CDrawResultPacket.Status status) {
         if (isSaving) {
             switch (status) {
-                case S2CDrawingPacket.STATUS_SUCCEED: {
+                case S2CDrawResultPacket.Status.SUCCEED: {
                     sendMessage(Component.translatable(SBRConstants.Translation.GUI_BRUSH_SAVE_SUCCESSFUL), true);
                     break;
                 }
-                case S2CDrawingPacket.STATUS_FAILED_PAPER: {
+                case S2CDrawResultPacket.Status.FAILED_MISSING_PAPER: {
                     sendMessage(Component.translatable(SBRConstants.Translation.GUI_BRUSH_SAVE_FAILED_NO_PAPER), false);
                     break;
                 }
-                case S2CDrawingPacket.STATUS_FAILED_INK: {
+                case S2CDrawResultPacket.Status.FAILED_MISSING_INK: {
                     sendMessage(Component.translatable(SBRConstants.Translation.GUI_BRUSH_SAVE_FAILED_NO_INK), false);
                     break;
                 }
-                case S2CDrawingPacket.STATUS_FAILED_DRAW: {
+                case S2CDrawResultPacket.Status.FAILED_DRAW: {
                     sendMessage(Component.translatable(SBRConstants.Translation.GUI_BRUSH_SAVE_FAILED_OUTPUT_OCCUPIED), false);
+                    break;
+                }
+                case S2CDrawResultPacket.Status.FAILED_MISSING_BRUSH: {
+                    sendMessage(Component.translatable(SBRConstants.Translation.GUI_BRUSH_SAVE_FAILED_NO_BRUSH_ON_HAND), false);
                     break;
                 }
             }
@@ -254,11 +256,13 @@ public class BrushScreen extends WidgetScreenBase<BrushMenu> {
     private void beginSaving() {
         isSaving = true;
         btnBrush.active = false;
+        updateCanvas();
     }
 
     private void afterSaved() {
         isSaving = false;
         btnBrush.active = true;
+        updateCanvas();
     }
 
     private void sendErrorMessage(String message) {
@@ -273,13 +277,15 @@ public class BrushScreen extends WidgetScreenBase<BrushMenu> {
     }
 
     private String drawToString() {
-        CompoundTag tag = canvas.getDrawing().writeToCompound();
+        CompoundTag tag = canvas.getDrawing().writeToCompound(Minecraft.getInstance().level.registryAccess());
         return NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, tag).toString();
     }
 
     private void drawFromString(String value) {
         CompoundTag tag = (CompoundTag) JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, JsonParser.parseString(value));
-        canvas.setDrawing(Drawing.fromTag(tag));
+        var drawing = new MutableDrawing();
+        drawing.readFromCompound(tag, Minecraft.getInstance().level.registryAccess());
+        canvas.setDrawing(drawing);
     }
 
     @Override
@@ -314,7 +320,7 @@ public class BrushScreen extends WidgetScreenBase<BrushMenu> {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         if (canvas.isMouseOver(mouseX, mouseY)) {
             if (scrollY != 0) {
                 var color = getSelectedColor();
@@ -332,7 +338,7 @@ public class BrushScreen extends WidgetScreenBase<BrushMenu> {
             }
         }
 
-        return super.mouseScrolled(mouseX, mouseY, scrollY);
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     @Override

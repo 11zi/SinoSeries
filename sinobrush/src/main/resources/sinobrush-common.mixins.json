@@ -4,8 +4,12 @@
     "package": "games.moegirl.sinocraft.sinobrush.mixin",
     "compatibilityLevel": "JAVA_17",
     "mixins": [
+        "CartographyTableMenuMixin",
+        "CartographyTableMenuMixin$Slot1",
+        "CartographyTableMenuMixin$Slot2"
     ],
     "client": [
+        "ItemFrameRendererMixin",
         "ItemInHandRendererMixin"
     ],
     "server": [

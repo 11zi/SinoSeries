@@ -1,6 +1,7 @@
 package games.moegirl.sinocraft.sinodeco.block;
 
-import games.moegirl.sinocraft.sinocore.utility.block.shape.BlockShapeHelper;
+import games.moegirl.sinocraft.sinocore.helper.BoolHelper;
+import games.moegirl.sinocraft.sinocore.helper.shape.BlockShapeHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
@@ -206,7 +207,7 @@ public class MarbleBalustradeBlock extends Block implements SimpleWaterloggedBlo
     }
 
     @Override
-    public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+    public @NotNull VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         var up = state.getValue(UP);
         var north = state.getValue(NORTH) ? 1 : 0;
         var east = state.getValue(EAST) ? 1 : 0;
@@ -219,6 +220,10 @@ public class MarbleBalustradeBlock extends Block implements SimpleWaterloggedBlo
     @Override
     public @NotNull BlockState updateShape(BlockState state, Direction direction, BlockState neighborState,
                                            LevelAccessor level, BlockPos pos, BlockPos neighborPos) {
+        if (state.getValue(BlockStateProperties.WATERLOGGED)) {
+            level.scheduleTick(pos, Fluids.WATER, Fluids.WATER.getTickDelay(level));
+        }
+
         return updateShape(state, pos, level);
     }
 
@@ -252,11 +257,9 @@ public class MarbleBalustradeBlock extends Block implements SimpleWaterloggedBlo
         var south = canConnectTo(southBlock, southBlock.isFaceSturdy(level, southPos, Direction.SOUTH), Direction.SOUTH);
         var west = canConnectTo(westBlock, westBlock.isFaceSturdy(level, westPos, Direction.WEST), Direction.WEST);
 
-        var blC = north ? 1 : 0;
-        blC += east ? 1 : 0;
-        blC += south ? 1 : 0;
-        blC += west ? 1 : 0;
-        var up = ((north && south) || (east && west)) && blC != 3 ? (upBlock.isAir() ? 0 : 1) : 2;
+        var up = upBlock.isAir()
+                ? (north && south && !east && !west) || (!north && !south && east && west) ? 0 : 2
+                : 1;
 
         return state.setValue(UP, up)
                 .setValue(NORTH, north)
@@ -268,7 +271,7 @@ public class MarbleBalustradeBlock extends Block implements SimpleWaterloggedBlo
     /// </editor-fold>
 
     @Override
-    public boolean isPathfindable(BlockState state, BlockGetter level, BlockPos pos, PathComputationType type) {
+    protected boolean isPathfindable(BlockState state, PathComputationType pathComputationType) {
         return false;
     }
 

@@ -4,15 +4,16 @@
     "package": "games.moegirl.sinocraft.sinocore.mixin",
     "compatibilityLevel": "JAVA_17",
     "mixins": [
-        "IServerCommonPacketListenerImplAccessor",
-        "ItemMixin",
-        "ItemPropertiesExtension",
+        "network.IServerCommonPacketListenerImplAccessor",
+        "item.ItemMixin",
+        "item.ItemPropertiesExtension",
+        "advancement.ServerPlayerMixin",
         "data.AdvancementProviderMixin",
         "data.LootTableProviderMixin",
         "data.RecipeProviderExtension",
         "data.RecipeProviderMixin",
         "data.TagsProviderMixin",
-        "advancement.ServerPlayerMixin"
+        "event.game.crafting.CartographyTableMenuMixin"
     ],
     "client": [
     ],

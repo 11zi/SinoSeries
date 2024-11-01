@@ -10,6 +10,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class NeoForgeCommandRegister implements ICommandRegistry {
 
@@ -17,7 +18,7 @@ public class NeoForgeCommandRegister implements ICommandRegistry {
 
     @Override
     public void registerCommands() {
-        NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
+        NeoForge.EVENT_BUS.addListener((Consumer<RegisterCommandsEvent>) event -> {
             CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
             Commands.CommandSelection selection = event.getCommandSelection();
             CommandBuildContext context = event.getBuildContext();

@@ -1,6 +1,6 @@
 package games.moegirl.sinocraft.sinocore.data.gen;
 
-import games.moegirl.sinocraft.sinocore.mixin_interfaces.interfaces.IRenamedProvider;
+import games.moegirl.sinocraft.sinocore.interfaces.bridge.IRenamedProviderBridge;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.tags.IntrinsicHolderTagsProvider;
@@ -17,7 +17,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
-public abstract class AbstractItemTagsProvider extends IntrinsicHolderTagsProvider<Item> implements IRenamedProvider, ISinoDataProvider {
+public abstract class AbstractItemTagsProvider extends IntrinsicHolderTagsProvider<Item> implements IRenamedProviderBridge, ISinoDataProvider {
 
     protected static final TagKey<Item> FORGE_CHESTS_WOODEN = forgeTag("chests/wooden");
     protected static final TagKey<Item> FORGE_CHESTS_TRAPPED = forgeTag("chests/trapped");
@@ -27,7 +27,7 @@ public abstract class AbstractItemTagsProvider extends IntrinsicHolderTagsProvid
     protected final Map<TagKey<Block>, TagKey<Item>> tagsToCopy = new HashMap<>();
 
     public AbstractItemTagsProvider(IDataGenContext context, TagsProvider<Block> blockTagsProvider) {
-        super(context.getOutput(), Registries.ITEM, context.registriesFuture(), item -> item.builtInRegistryHolder().key());
+        super(context.getOutput(), Registries.ITEM, context.getRegistries(), item -> item.builtInRegistryHolder().key());
         this.modId = context.getModId();
         this.blockTags = blockTagsProvider.contentsGetter();
     }
@@ -44,12 +44,20 @@ public abstract class AbstractItemTagsProvider extends IntrinsicHolderTagsProvid
         }
     }
 
+    /**
+     * Use {@link AbstractItemTagsProvider#cTag} instead.
+     */
+    @Deprecated(forRemoval = true)
     protected static TagKey<Item> forgeTag(String name) {
-        return TagKey.create(Registries.ITEM, new ResourceLocation("forge", name));
+        return TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath("forge", name));
+    }
+
+    protected static TagKey<Item> cTag(String name) {
+        return TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath("c", name));
     }
 
     @Override
-    public String getNewName() {
+    public String sino$getNewName() {
         return "Tags for Item: " + modId;
     }
 
